@@ -65,6 +65,8 @@ class AnsibleManager:
             private_key_path = os.path.expanduser(self.config.get("azure", {}).get("private_key_path", "~/.ssh/id_rsa"))
         elif self.cloud_provider == "gcp":
             private_key_path = os.path.expanduser(self.config.get("gcp", {}).get("private_key_path", "~/.ssh/id_rsa"))
+        elif self.cloud_provider == "ludus":
+            private_key_path = os.path.expanduser(self.config.get("ludus", {}).get("private_key_path", "~/.ssh/id_rsa"))
         else:  # aws
             private_key_path = os.path.expanduser(self.config.get("aws", {}).get("private_key_path", "~/.ssh/id_rsa"))
 
@@ -121,6 +123,8 @@ class AnsibleManager:
             private_key_path = os.path.expanduser(self.config.get("azure", {}).get("private_key_path", "~/.ssh/id_rsa"))
         elif self.cloud_provider == "gcp":
             private_key_path = os.path.expanduser(self.config.get("gcp", {}).get("private_key_path", "~/.ssh/id_rsa"))
+        elif self.cloud_provider == "ludus":
+            private_key_path = os.path.expanduser(self.config.get("ludus", {}).get("private_key_path", "~/.ssh/id_rsa"))
         else:  # aws
             private_key_path = os.path.expanduser(self.config.get("aws", {}).get("private_key_path", "~/.ssh/id_rsa"))
 

@@ -1,0 +1,21 @@
+general:
+  attack_range_password: changeme123!
+  cloud_provider: ludus
+  attack_range_name: ar
+  ip_whitelist: 0.0.0.0/0
+  description: Minimal Ludus deployment with Splunk only instance
+ludus:
+  ludus_url: https://198.51.100.1:8080
+  vlan: 20
+attack_range:
+- name: splunk
+  template: debian-12-x64-server-template
+  ram_gb: 16
+  cpus: 8
+  ip_last_octet: 10
+  linux: true
+  user_name: debian
+  roles:
+  - role: p4t12ick.ludus_ar_splunk
+    vars:
+      ludus_ar_splunk_password: changeme123!
