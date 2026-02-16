@@ -285,7 +285,7 @@ def get_provider_availability(test_missing: Optional[str] = None) -> list:
         {"provider": "aws", "cli": "aws"},
         {"provider": "azure", "cli": "az"},
         {"provider": "gcp", "cli": "gcloud"},
-        {"provider": "ludus", "cli": "ludus"},
+        {"provider": "ludus", "cli": "ludus", "version_flag": "version"},
     ]
     
     results = []
@@ -303,7 +303,8 @@ def get_provider_availability(test_missing: Optional[str] = None) -> list:
             ))
         else:
             # First check if CLI is available
-            cli_available, cli_error = check_cli_available(cli_command)
+            version_flag = provider_config.get("version_flag", "--version")
+            cli_available, cli_error = check_cli_available(cli_command, version_flag)
             
             if not cli_available:
                 # CLI not available
