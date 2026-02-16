@@ -50,6 +50,15 @@ RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.
     apt-get install -y google-cloud-cli && \
     rm -rf /var/lib/apt/lists/*
 
+# Install Ludus CLI (if available for the architecture)
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then \
+        curl -sL -o /usr/local/bin/ludus "https://gitlab.com/badsectorlabs/ludus/-/releases/permalink/latest/downloads/ludus-client_linux-arm64" 2>/dev/null || true; \
+    else \
+        curl -sL -o /usr/local/bin/ludus "https://gitlab.com/badsectorlabs/ludus/-/releases/permalink/latest/downloads/ludus-client_linux-amd64" 2>/dev/null || true; \
+    fi && \
+    if [ -f /usr/local/bin/ludus ]; then chmod +x /usr/local/bin/ludus; fi
+
 # Copy requirements file
 COPY requirements.txt /app/requirements.txt
 

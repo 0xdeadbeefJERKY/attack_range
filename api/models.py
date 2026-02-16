@@ -172,7 +172,7 @@ class AttackRangeListResponse(BaseModel):
 
 class ProviderAvailability(BaseModel):
     """Provider CLI availability information."""
-    provider: str = Field(..., description="Cloud provider name (aws, azure, gcp)")
+    provider: str = Field(..., description="Cloud provider name (aws, azure, gcp, ludus)")
     available: bool = Field(..., description="Whether the CLI is installed and available")
     cli_command: str = Field(..., description="CLI command name (aws, az, gcloud)")
     error_message: Optional[str] = Field(None, description="Error message if CLI is not available")

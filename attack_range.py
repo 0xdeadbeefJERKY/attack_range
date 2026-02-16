@@ -75,7 +75,7 @@ def build_action(args):
         if os.path.exists(templates_dir):
             # Check provider subdirectories
             templates = []
-            for provider in ["aws", "azure", "gcp"]:
+            for provider in ["aws", "azure", "gcp", "ludus"]:
                 provider_dir = os.path.join(templates_dir, provider)
                 if os.path.exists(provider_dir):
                     provider_templates = [f for f in os.listdir(provider_dir) if f.endswith(('.yml', '.yaml'))]

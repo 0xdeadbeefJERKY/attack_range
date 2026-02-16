@@ -246,6 +246,27 @@ def check_credentials_available(provider: str) -> Tuple[bool, Optional[str]]:
                 return False, error_msg
             return False, "GCP credentials not found (~/.config/gcloud)"
         
+        elif provider.lower() == "ludus":
+            # Check for Ludus API key in environment or keyring
+            ludus_api_key = os.environ.get("LUDUS_API_KEY")
+            if ludus_api_key:
+                return True, None
+            # Also check if ludus CLI has a stored API key by running a quick command
+            ludus_cmd = shutil.which("ludus")
+            if ludus_cmd:
+                result = subprocess.run(
+                    [ludus_cmd, "user", "apikey"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                    env=os.environ.copy()
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    return True, None
+                return False, "Ludus CLI installed but no API key configured (set LUDUS_API_KEY or run 'ludus user apikey')"
+            return False, "Ludus API key not found (set LUDUS_API_KEY environment variable)"
+
         return False, f"Unknown provider: {provider}"
     except Exception as e:
         return False, f"Error checking credentials for {provider}: {str(e)}"
@@ -262,6 +283,7 @@ def get_provider_availability(test_missing: Optional[str] = None) -> list:
         {"provider": "aws", "cli": "aws"},
         {"provider": "azure", "cli": "az"},
         {"provider": "gcp", "cli": "gcloud"},
+        {"provider": "ludus", "cli": "ludus"},
     ]
     
     results = []
@@ -320,7 +342,7 @@ def get_templates() -> list:
         return templates
 
     # Scan templates directory
-    for provider in ["aws", "azure", "gcp"]:
+    for provider in ["aws", "azure", "gcp", "ludus"]:
         provider_dir = os.path.join(TEMPLATES_DIR, provider)
         if os.path.exists(provider_dir):
             yml_files = glob.glob(os.path.join(provider_dir, "*.yml"))
