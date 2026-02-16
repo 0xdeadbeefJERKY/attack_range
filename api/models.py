@@ -250,3 +250,28 @@ class UpdateNameResponse(BaseModel):
     message: str = Field(..., description="Status message")
     attack_range_id: str = Field(..., description="Attack range ID")
     attack_range_name: str = Field(..., description="Updated attack range name")
+
+
+class ImportLudusRequest(BaseModel):
+    """Request model for importing an already-deployed Ludus range."""
+    template: Optional[str] = Field(None, description="Template name (optional; if omitted Ludus is queried for the range config)")
+    ludus_url: Optional[str] = Field(None, description="Ludus API URL (e.g. https://198.51.100.1:8080)")
+    attack_range_password: Optional[str] = Field(None, description="Attack range password (default: changeme123!)")
+
+    class Config:
+        json_schema_extra = {
+            "examples": [
+                {"template": "ludus/splunk_minimal_ludus"},
+                {"ludus_url": "https://10.0.0.5:8080"},
+                {}
+            ]
+        }
+
+
+class ImportLudusResponse(BaseModel):
+    """Response model for Ludus import operation."""
+    status: str = Field(..., description="Operation status")
+    message: str = Field(..., description="Status message")
+    attack_range_id: str = Field(..., description="Imported attack range ID")
+    ludus_url: Optional[str] = Field(None, description="Ludus API URL")
+    wireguard_config: Optional[str] = Field(None, description="WireGuard configuration (if retrieved)")

@@ -245,12 +245,89 @@ def share_action(args):
         sys.exit(1)
 
 
+def import_action(args):
+    """Execute import action (Ludus only)."""
+    base_dir = os.path.dirname(__file__)
+    templates_dir = os.path.join(base_dir, "templates")
+    config_dir = os.path.join(base_dir, "config")
+
+    # Build a minimal config from template if provided, otherwise construct one
+    if args.template:
+        try:
+            config, config_path, attack_range_id = prepare_config_from_template(
+                args.template,
+                templates_dir,
+                config_dir,
+                generate_id=True,
+            )
+        except FileNotFoundError as e:
+            print(f"Error: Template file not found: {e}")
+            sys.exit(1)
+    else:
+        # No template -- construct a minimal Ludus config; the controller
+        # will query Ludus for the actual range configuration.
+        import uuid as _uuid
+        attack_range_id = str(_uuid.uuid4())
+        config = {
+            "general": {
+                "cloud_provider": "ludus",
+                "attack_range_id": attack_range_id,
+                "attack_range_password": args.password or "changeme123!",
+                "attack_range_name": "Imported Ludus Range",
+                "ip_whitelist": "0.0.0.0/0",
+                "status": "queued",
+            },
+            "ludus": {},
+        }
+        if args.ludus_url:
+            config["ludus"]["ludus_url"] = args.ludus_url
+
+        config_path = os.path.join(config_dir, f"{attack_range_id}.yml")
+        os.makedirs(config_dir, exist_ok=True)
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+    # Override Ludus URL if explicitly provided
+    if args.ludus_url:
+        if "ludus" not in config:
+            config["ludus"] = {}
+        config["ludus"]["ludus_url"] = args.ludus_url
+
+    # Ensure provider is ludus
+    provider = config.get("general", {}).get("cloud_provider", "").lower()
+    if provider != "ludus":
+        print(f"Error: import is only supported for the Ludus provider (got '{provider}')")
+        sys.exit(1)
+
+    try:
+        controller = AttackRangeController(config, config_path=config_path)
+        result = controller.import_ludus_range()
+
+        print("\n" + "=" * 60)
+        print("Ludus range imported successfully!")
+        print("=" * 60)
+        print(f"Attack Range ID: {result['attack_range_id']}")
+        print(f"Ludus URL:       {result['ludus_url']}")
+        print(f"Status:          {result['status']}")
+        if result.get("wireguard_config"):
+            print("\nWireGuard config available in the saved config file.")
+        print("=" * 60 + "\n")
+    except RuntimeError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: Failed to import Ludus range: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
 def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(
         description="Simple script to execute AttackRangeController commands"
     )
-    
+
     subparsers = parser.add_subparsers(
         title="actions",
         dest="action",
@@ -324,6 +401,26 @@ def main():
         help="Share name (e.g. 'alice') — used as the new WireGuard client name",
     )
     share_parser.set_defaults(func=share_action)
+
+    # Import action (Ludus)
+    import_parser = subparsers.add_parser(
+        "import",
+        help="Import an already-deployed Ludus range into attack_range management",
+    )
+    import_parser.add_argument(
+        "-t",
+        "--template",
+        help="Template to use for server definitions (optional; if omitted, Ludus is queried)",
+    )
+    import_parser.add_argument(
+        "--ludus-url",
+        help="Ludus API URL (e.g., https://198.51.100.1:8080)",
+    )
+    import_parser.add_argument(
+        "--password",
+        help="Attack range password (default: changeme123!)",
+    )
+    import_parser.set_defaults(func=import_action)
 
     args = parser.parse_args()
     args.func(args)

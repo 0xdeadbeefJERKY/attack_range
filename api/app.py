@@ -51,6 +51,8 @@ from api.models import (
     ShareResponse,
     UpdateNameRequest,
     UpdateNameResponse,
+    ImportLudusRequest,
+    ImportLudusResponse,
 )
 
 # Disable macOS fork safety warning
@@ -1584,6 +1586,87 @@ def share_attack_range(body: ShareRequest):
         import traceback
         return jsonify(ErrorResponse(
             message="Failed to share attack range",
+            details=traceback.format_exc()
+        ).model_dump()), 500
+
+
+@app.post(
+    "/attack-range/import",
+    tags=[attack_range_tag],
+    responses={200: ImportLudusResponse, 400: ErrorResponse, 500: ErrorResponse},
+    summary="Import Ludus range",
+    description="Import an already-deployed Ludus range into attack_range management. "
+                "Queries the Ludus server for range status and WireGuard config, then "
+                "creates a config file so the range appears in the dashboard."
+)
+def import_ludus_range(body: ImportLudusRequest):
+    """Import an already-deployed Ludus range."""
+    try:
+        import uuid as _uuid
+
+        # Build config from template or from scratch
+        if body.template:
+            try:
+                config, config_path, attack_range_id = prepare_config_from_template(
+                    body.template,
+                    TEMPLATES_DIR,
+                    CONFIG_DIR,
+                    generate_id=True,
+                )
+            except FileNotFoundError as e:
+                return jsonify(ErrorResponse(
+                    message=f"Template not found: {body.template}",
+                    details=str(e)
+                ).model_dump()), 400
+        else:
+            attack_range_id = str(_uuid.uuid4())
+            config = {
+                "general": {
+                    "cloud_provider": "ludus",
+                    "attack_range_id": attack_range_id,
+                    "attack_range_password": body.attack_range_password or "changeme123!",
+                    "attack_range_name": "Imported Ludus Range",
+                    "ip_whitelist": "0.0.0.0/0",
+                    "status": "queued",
+                },
+                "ludus": {},
+            }
+            config_path = os.path.join(CONFIG_DIR, f"{attack_range_id}.yml")
+            save_yaml_file(config_path, config)
+
+        # Override Ludus URL if provided
+        if body.ludus_url:
+            if "ludus" not in config:
+                config["ludus"] = {}
+            config["ludus"]["ludus_url"] = body.ludus_url
+
+        # Verify provider is ludus
+        provider = config.get("general", {}).get("cloud_provider", "").lower()
+        if provider != "ludus":
+            return jsonify(ErrorResponse(
+                message=f"Import is only supported for the Ludus provider (got '{provider}')"
+            ).model_dump()), 400
+
+        controller = AttackRangeController(config, config_path=config_path)
+        result = controller.import_ludus_range()
+
+        return jsonify(ImportLudusResponse(
+            status="running",
+            message="Ludus range imported successfully",
+            attack_range_id=result["attack_range_id"],
+            ludus_url=result.get("ludus_url"),
+            wireguard_config=result.get("wireguard_config"),
+        ).model_dump()), 200
+
+    except RuntimeError as e:
+        return jsonify(ErrorResponse(
+            message="Failed to import Ludus range",
+            details=str(e)
+        ).model_dump()), 400
+    except Exception as e:
+        import traceback
+        return jsonify(ErrorResponse(
+            message="Failed to import Ludus range",
             details=traceback.format_exc()
         ).model_dump()), 500
 

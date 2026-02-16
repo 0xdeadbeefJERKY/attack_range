@@ -356,3 +356,79 @@ terraform {{
     def get_ludus_url(self) -> str:
         """Return the Ludus API URL / WireGuard endpoint IP."""
         return self.config.get("ludus", {}).get("ludus_url", "https://198.51.100.1:8080")
+
+    def get_range_config(self) -> Optional[dict]:
+        """Retrieve the current Ludus range configuration via ``ludus range config get``.
+
+        :returns: Parsed YAML dict of the Ludus range config, or ``None`` on failure.
+        """
+        result = self._run_ludus_cli(["range", "config", "get"], check=False)
+        if result.returncode != 0:
+            self.logger.warning(f"Ludus: failed to get range config: {result.stderr}")
+            return None
+        try:
+            return yaml.safe_load(result.stdout)
+        except yaml.YAMLError as e:
+            self.logger.warning(f"Ludus: failed to parse range config YAML: {e}")
+            return None
+
+    def convert_ludus_config_to_attack_range(self, ludus_config: dict) -> list:
+        """Convert a Ludus range config to an ``attack_range`` server list.
+
+        This is the reverse of :meth:`convert_to_ludus_config`.  Given a
+        Ludus range config (as returned by ``ludus range config get``), produce
+        an ``attack_range`` list suitable for the attack_range configuration.
+
+        :param ludus_config: Ludus range configuration dict (with a ``ludus`` key).
+        :returns: List of server dicts for the ``attack_range`` config section.
+        """
+        servers = []
+        for vm in ludus_config.get("ludus", []):
+            vm_name = vm.get("vm_name", "")
+            # Strip the {{ range_id }}- prefix to get the short name
+            short_name = vm_name
+            if "-" in vm_name:
+                # "{{ range_id }}-splunk" or "JD-splunk" -> "splunk"
+                parts = vm_name.split("-", 1)
+                if len(parts) > 1:
+                    candidate = parts[1]
+                    # If the first part looks like a range_id prefix, use the rest
+                    if parts[0] in ("{{ range_id }}", "{{range_id}}") or len(parts[0]) <= 4:
+                        short_name = candidate
+
+            server: dict = {
+                "name": short_name,
+                "template": vm.get("template", ""),
+                "ip_last_octet": vm.get("ip_last_octet", 10),
+            }
+
+            if vm.get("ram_gb"):
+                server["ram_gb"] = vm["ram_gb"]
+            if vm.get("cpus"):
+                server["cpus"] = vm["cpus"]
+            if vm.get("vlan"):
+                server["vlan"] = vm["vlan"]
+
+            # OS type
+            if vm.get("windows"):
+                server["windows"] = True
+                server["user_name"] = "localuser"
+            else:
+                server["linux"] = True
+                server["user_name"] = "debian" if "debian" in vm.get("template", "") else "ubuntu"
+
+            # Roles
+            role_names = vm.get("roles", [])
+            role_vars = vm.get("role_vars", {})
+            if role_names:
+                roles = []
+                for rn in role_names:
+                    role_entry: dict = {"role": rn}
+                    if role_vars:
+                        role_entry["vars"] = dict(role_vars)
+                    roles.append(role_entry)
+                server["roles"] = roles
+
+            servers.append(server)
+
+        return servers

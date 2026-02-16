@@ -8,6 +8,7 @@ operations using modular managers for different responsibilities.
 import os
 import sys
 import time
+import uuid
 from typing import Callable, Optional
 from .logger import setup_logging
 
@@ -467,6 +468,75 @@ class AttackRangeController:
         self.config_manager.update_status("running", router_public_ip=ludus_url)
 
         return ludus_url, wireguard_config
+
+    def import_ludus_range(self) -> dict:
+        """
+        Import an already-deployed Ludus range into attack_range management.
+
+        Queries the Ludus server for the current range config, status, and
+        WireGuard configuration, then constructs and saves an attack_range
+        config file so the range appears in the dashboard and can be
+        destroyed / used for simulations.
+
+        :returns: Dict with ``attack_range_id``, ``status``, ``ludus_url``,
+                  and ``wireguard_config``.
+        :raises RuntimeError: If the Ludus range is not in a usable state.
+        """
+        self.logger.info("[action] > import ludus range\n")
+
+        if self.cloud_provider_name != "ludus":
+            raise RuntimeError("import_ludus_range is only supported for the Ludus provider")
+
+        # 1. Verify the range is deployed
+        status = self.cloud_provider.get_range_status()
+        if status != "SUCCESS":
+            raise RuntimeError(
+                f"Cannot import Ludus range: current status is '{status}'. "
+                "The range must be in SUCCESS state (fully deployed)."
+            )
+        self.logger.info(f"Ludus range status: {status}")
+
+        # 2. Get the live range config from Ludus
+        ludus_range_config = self.cloud_provider.get_range_config()
+
+        # 3. If we don't already have attack_range servers from the template,
+        #    reverse-map from the Ludus config
+        if not self.config.get("attack_range") and ludus_range_config:
+            self.logger.info("Reverse-mapping Ludus range config to attack_range format...")
+            self.config["attack_range"] = self.cloud_provider.convert_ludus_config_to_attack_range(
+                ludus_range_config
+            )
+
+        # 4. Ensure we have an attack_range_id
+        attack_range_id = self.config.get("general", {}).get("attack_range_id")
+        if not attack_range_id:
+            attack_range_id = str(uuid.uuid4())
+            if "general" not in self.config:
+                self.config["general"] = {}
+            self.config["general"]["attack_range_id"] = attack_range_id
+        self.logger.info(f"Attack range ID: {attack_range_id}")
+
+        # 5. Get WireGuard config
+        wireguard_config = self.cloud_provider.get_wireguard_config()
+        ludus_url = self.cloud_provider.get_ludus_url()
+
+        # 6. Save the config as "running"
+        self.config["general"]["status"] = "running"
+        self.config["general"]["cloud_provider"] = "ludus"
+        if ludus_url:
+            self.config["general"]["router_public_ip"] = ludus_url
+        if wireguard_config:
+            self.config["general"]["wireguard_config"] = wireguard_config
+
+        self.config_manager.save_config_to_attack_range(attack_range_id)
+        self.logger.info(f"Ludus range imported as attack_range_id={attack_range_id}")
+
+        return {
+            "attack_range_id": attack_range_id,
+            "status": "running",
+            "ludus_url": ludus_url,
+            "wireguard_config": wireguard_config,
+        }
 
     def destroy(self) -> None:
         """

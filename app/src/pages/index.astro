@@ -223,6 +223,14 @@ const templatesByProvider = templates.reduce((acc, template) => {
 						<p class="provider-error-hint">Install the {providerInfo.cli_command} CLI to use {provider.toUpperCase()} templates.</p>
 					</div>
 				)}
+				{provider === 'ludus' && isProviderAvailable && (
+					<div class="ludus-import-section">
+						<button id="ludus-import-btn" class="import-button">
+							Import Existing Ludus Range
+						</button>
+						<span class="import-hint">Already deployed a range with the Ludus CLI? Import it here.</span>
+					</div>
+				)}
 				<div class="templates-grid">
 					{providerTemplates.map((template) => {
 						const isAvailable = template.provider_available ?? isProviderAvailable;
@@ -710,6 +718,36 @@ const templatesByProvider = templates.reduce((acc, template) => {
 			});
 		});
 		
+		// Ludus import button handler
+		const ludusImportBtn = document.getElementById('ludus-import-btn');
+		if (ludusImportBtn) {
+			ludusImportBtn.addEventListener('click', async () => {
+				const btn = ludusImportBtn as HTMLButtonElement;
+				const originalText = btn.textContent;
+				btn.disabled = true;
+				btn.textContent = 'Importing...';
+				try {
+					const response = await fetch(`${API_BASE_URL}/attack-range/import`, {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({}),
+					});
+					const data = await response.json();
+					if (response.ok) {
+						alert(`Ludus range imported successfully!\n\nAttack Range ID: ${data.attack_range_id}\nStatus: ${data.status}`);
+						window.location.reload();
+					} else {
+						alert(`Import failed: ${data.message || data.details || 'Unknown error'}`);
+					}
+				} catch (err) {
+					alert(`Import failed: ${err instanceof Error ? err.message : 'Network error'}`);
+				} finally {
+					btn.disabled = false;
+					btn.textContent = originalText;
+				}
+			});
+		}
+
 		// Smart polling: only refresh when templates are added
 		let lastTemplates: string | null = null;
 		let pollingInterval: number | null = null;
@@ -1109,5 +1147,38 @@ const templatesByProvider = templates.reduce((acc, template) => {
 		background: rgba(148, 163, 184, 0.3);
 		color: var(--color-text-dim);
 		box-shadow: none;
+	}
+
+	.ludus-import-section {
+		margin-top: 1.5rem;
+		padding-top: 1.5rem;
+		border-top: 1px solid rgba(148, 163, 184, 0.15);
+		text-align: center;
+	}
+
+	.import-button {
+		width: 100%;
+		padding: 0.6rem 1.2rem;
+		border: 1px solid rgba(56, 189, 248, 0.4);
+		border-radius: 0.5rem;
+		background: rgba(56, 189, 248, 0.08);
+		color: var(--color-accent);
+		font-size: 0.9rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.import-button:hover {
+		background: rgba(56, 189, 248, 0.18);
+		border-color: rgba(56, 189, 248, 0.6);
+		box-shadow: 0 0 12px rgba(56, 189, 248, 0.15);
+	}
+
+	.import-hint {
+		display: block;
+		margin-top: 0.5rem;
+		font-size: 0.75rem;
+		color: var(--color-text-dim);
 	}
 </style>
