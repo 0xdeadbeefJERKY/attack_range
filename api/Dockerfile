@@ -50,14 +50,20 @@ RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.
     apt-get install -y google-cloud-cli && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Ludus CLI (if available for the architecture)
+# Install Ludus CLI from GitLab package registry
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then \
-        curl -sL -o /usr/local/bin/ludus "https://gitlab.com/badsectorlabs/ludus/-/releases/permalink/latest/downloads/ludus-client_linux-arm64" 2>/dev/null || true; \
+        LUDUS_ARCH="arm64"; \
     else \
-        curl -sL -o /usr/local/bin/ludus "https://gitlab.com/badsectorlabs/ludus/-/releases/permalink/latest/downloads/ludus-client_linux-amd64" 2>/dev/null || true; \
+        LUDUS_ARCH="amd64"; \
     fi && \
-    if [ -f /usr/local/bin/ludus ]; then chmod +x /usr/local/bin/ludus; fi
+    LUDUS_PROJECT_ID=54052321 && \
+    LUDUS_TAG=$(curl -sL "https://gitlab.com/api/v4/projects/${LUDUS_PROJECT_ID}/repository/tags" | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['name'])" 2>/dev/null) && \
+    if [ -n "$LUDUS_TAG" ]; then \
+        curl -sL -o /usr/local/bin/ludus \
+            "https://gitlab.com/api/v4/projects/${LUDUS_PROJECT_ID}/packages/generic/ludus/${LUDUS_TAG}/ludus-client_linux-${LUDUS_ARCH}-${LUDUS_TAG}" && \
+        chmod +x /usr/local/bin/ludus; \
+    fi
 
 # Copy requirements file
 COPY requirements.txt /app/requirements.txt
