@@ -242,7 +242,9 @@ terraform {{
             data = json.loads(result.stdout)
             # The status field varies by Ludus version; try common locations
             if isinstance(data, dict):
-                return data.get("result", {}).get("status", data.get("status", "UNKNOWN"))
+                return data.get("rangeState",
+                       data.get("result", {}).get("status",
+                       data.get("status", "UNKNOWN")))
             return "UNKNOWN"
         except (json.JSONDecodeError, KeyError):
             # Fall back to text parsing

@@ -68,13 +68,12 @@ info = Info(
 app = OpenAPI(__name__, info=info)
 
 # Enable CORS for all routes
-# Allow requests from localhost (for direct access) and from app container
+# Allow all origins so the app works behind SSH tunnels and reverse proxies
 CORS(app, resources={
     r"/*": {
-        "origins": ["http://localhost:4321", "http://localhost:3000", "http://127.0.0.1:4321", "http://127.0.0.1:3000", "http://app:4321"],
+        "origins": "*",
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": True
     }
 })
 

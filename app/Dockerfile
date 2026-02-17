@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:22-slim
 
 # Set working directory
 WORKDIR /app
@@ -7,11 +7,7 @@ WORKDIR /app
 COPY app/package*.json ./
 
 # Install dependencies (node_modules from host are excluded via .dockerignore)
-# Use --ignore-scripts to avoid permission issues with postinstall hooks (esbuild),
-# then run node to trigger esbuild's own platform-specific binary resolution.
-RUN npm ci --ignore-scripts && \
-    chmod +x node_modules/esbuild/bin/esbuild && \
-    node node_modules/esbuild/install.js
+RUN npm ci
 
 # Copy app source (excludes node_modules, dist, .astro via .dockerignore)
 COPY app/ ./

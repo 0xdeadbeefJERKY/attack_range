@@ -6,6 +6,8 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     image: attack_range:all
+    env_file:
+      - ../.env
     volumes:
       - ../config:/attack_range/config
       # Mount templates directory - changes to templates on host will be available in container
@@ -28,6 +30,8 @@ services:
     container_name: attack-range-api
     ports:
       - "4000:4000"
+    env_file:
+      - ../.env
     volumes:
       - ../config:/app/config
       - ../ssh_keys:/app/ssh_keys
@@ -45,8 +49,6 @@ services:
       - FLASK_ENV=production
       - FLASK_DEBUG=0
       - OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
-      # Ludus API key (set LUDUS_API_KEY in your shell environment)
-      - LUDUS_API_KEY=${LUDUS_API_KEY:-}
     restart: unless-stopped
     networks:
       - attack-range-network

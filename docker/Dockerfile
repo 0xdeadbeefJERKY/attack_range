@@ -1,5 +1,5 @@
 FROM ubuntu:22.04
-ENV DEBIAN_FRONTEND=noninteractive 
+ENV DEBIAN_FRONTEND=noninteractive
 
 ARG TERRAFORM_VERSION=1.14.4
 RUN apt-get update && \
@@ -27,7 +27,7 @@ RUN ARCH=$(uname -m) && \
     unzip terraform.zip && \
     mv terraform /usr/local/bin/ && \
     rm -rf terraform.zip
- 
+
 # Install AWS CLI (detect architecture and install appropriate version)
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then \
