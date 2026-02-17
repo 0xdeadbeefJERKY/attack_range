@@ -7,7 +7,7 @@ WORKDIR /app
 COPY app/package*.json ./
 
 # Install dependencies (node_modules from host are excluded via .dockerignore)
-RUN npm ci
+RUN npm ci --unsafe-perm
 
 # Copy app source (excludes node_modules, dist, .astro via .dockerignore)
 COPY app/ ./
