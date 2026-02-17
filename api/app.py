@@ -51,6 +51,8 @@ from api.models import (
     ShareResponse,
     UpdateNameRequest,
     UpdateNameResponse,
+    ImportLudusRequest,
+    ImportLudusResponse,
 )
 
 # Disable macOS fork safety warning
@@ -66,13 +68,12 @@ info = Info(
 app = OpenAPI(__name__, info=info)
 
 # Enable CORS for all routes
-# Allow requests from localhost (for direct access) and from app container
+# Allow all origins so the app works behind SSH tunnels and reverse proxies
 CORS(app, resources={
     r"/*": {
-        "origins": ["http://localhost:4321", "http://localhost:3000", "http://127.0.0.1:4321", "http://127.0.0.1:3000", "http://app:4321"],
+        "origins": "*",
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": True
     }
 })
 
@@ -246,6 +247,27 @@ def check_credentials_available(provider: str) -> Tuple[bool, Optional[str]]:
                 return False, error_msg
             return False, "GCP credentials not found (~/.config/gcloud)"
         
+        elif provider.lower() == "ludus":
+            # Check for Ludus API key in environment or keyring
+            ludus_api_key = os.environ.get("LUDUS_API_KEY")
+            if ludus_api_key:
+                return True, None
+            # Also check if ludus CLI has a stored API key by running a quick command
+            ludus_cmd = shutil.which("ludus")
+            if ludus_cmd:
+                result = subprocess.run(
+                    [ludus_cmd, "user", "apikey"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                    env=os.environ.copy()
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    return True, None
+                return False, "Ludus CLI installed but no API key configured (set LUDUS_API_KEY or run 'ludus user apikey')"
+            return False, "Ludus API key not found (set LUDUS_API_KEY environment variable)"
+
         return False, f"Unknown provider: {provider}"
     except Exception as e:
         return False, f"Error checking credentials for {provider}: {str(e)}"
@@ -262,6 +284,7 @@ def get_provider_availability(test_missing: Optional[str] = None) -> list:
         {"provider": "aws", "cli": "aws"},
         {"provider": "azure", "cli": "az"},
         {"provider": "gcp", "cli": "gcloud"},
+        {"provider": "ludus", "cli": "ludus", "version_flag": "version"},
     ]
     
     results = []
@@ -279,7 +302,8 @@ def get_provider_availability(test_missing: Optional[str] = None) -> list:
             ))
         else:
             # First check if CLI is available
-            cli_available, cli_error = check_cli_available(cli_command)
+            version_flag = provider_config.get("version_flag", "--version")
+            cli_available, cli_error = check_cli_available(cli_command, version_flag)
             
             if not cli_available:
                 # CLI not available
@@ -320,7 +344,7 @@ def get_templates() -> list:
         return templates
 
     # Scan templates directory
-    for provider in ["aws", "azure", "gcp"]:
+    for provider in ["aws", "azure", "gcp", "ludus"]:
         provider_dir = os.path.join(TEMPLATES_DIR, provider)
         if os.path.exists(provider_dir):
             yml_files = glob.glob(os.path.join(provider_dir, "*.yml"))
@@ -1562,6 +1586,87 @@ def share_attack_range(body: ShareRequest):
         import traceback
         return jsonify(ErrorResponse(
             message="Failed to share attack range",
+            details=traceback.format_exc()
+        ).model_dump()), 500
+
+
+@app.post(
+    "/attack-range/import",
+    tags=[attack_range_tag],
+    responses={200: ImportLudusResponse, 400: ErrorResponse, 500: ErrorResponse},
+    summary="Import Ludus range",
+    description="Import an already-deployed Ludus range into attack_range management. "
+                "Queries the Ludus server for range status and WireGuard config, then "
+                "creates a config file so the range appears in the dashboard."
+)
+def import_ludus_range(body: ImportLudusRequest):
+    """Import an already-deployed Ludus range."""
+    try:
+        import uuid as _uuid
+
+        # Build config from template or from scratch
+        if body.template:
+            try:
+                config, config_path, attack_range_id = prepare_config_from_template(
+                    body.template,
+                    TEMPLATES_DIR,
+                    CONFIG_DIR,
+                    generate_id=True,
+                )
+            except FileNotFoundError as e:
+                return jsonify(ErrorResponse(
+                    message=f"Template not found: {body.template}",
+                    details=str(e)
+                ).model_dump()), 400
+        else:
+            attack_range_id = str(_uuid.uuid4())
+            config = {
+                "general": {
+                    "cloud_provider": "ludus",
+                    "attack_range_id": attack_range_id,
+                    "attack_range_password": body.attack_range_password or "changeme123!",
+                    "attack_range_name": "Imported Ludus Range",
+                    "ip_whitelist": "0.0.0.0/0",
+                    "status": "queued",
+                },
+                "ludus": {},
+            }
+            config_path = os.path.join(CONFIG_DIR, f"{attack_range_id}.yml")
+            save_yaml_file(config_path, config)
+
+        # Override Ludus URL if provided
+        if body.ludus_url:
+            if "ludus" not in config:
+                config["ludus"] = {}
+            config["ludus"]["ludus_url"] = body.ludus_url
+
+        # Verify provider is ludus
+        provider = config.get("general", {}).get("cloud_provider", "").lower()
+        if provider != "ludus":
+            return jsonify(ErrorResponse(
+                message=f"Import is only supported for the Ludus provider (got '{provider}')"
+            ).model_dump()), 400
+
+        controller = AttackRangeController(config, config_path=config_path)
+        result = controller.import_ludus_range()
+
+        return jsonify(ImportLudusResponse(
+            status="running",
+            message="Ludus range imported successfully",
+            attack_range_id=result["attack_range_id"],
+            ludus_url=result.get("ludus_url"),
+            wireguard_config=result.get("wireguard_config"),
+        ).model_dump()), 200
+
+    except RuntimeError as e:
+        return jsonify(ErrorResponse(
+            message="Failed to import Ludus range",
+            details=str(e)
+        ).model_dump()), 400
+    except Exception as e:
+        import traceback
+        return jsonify(ErrorResponse(
+            message="Failed to import Ludus range",
             details=traceback.format_exc()
         ).model_dump()), 500
 

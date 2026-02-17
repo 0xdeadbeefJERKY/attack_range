@@ -8,6 +8,7 @@ operations using modular managers for different responsibilities.
 import os
 import sys
 import time
+import uuid
 from typing import Callable, Optional
 from .logger import setup_logging
 
@@ -22,6 +23,7 @@ from .managers.backend_manager import BackendManager
 from .cloud_providers.aws_provider import AWSProvider
 from .cloud_providers.azure_provider import AzureProvider
 from .cloud_providers.gcp_provider import GCPProvider
+from .cloud_providers.ludus_provider import LudusProvider
 
 # Import utilities
 from .utils import get_wireguard_config, get_wireguard_config_for_client
@@ -45,8 +47,8 @@ class AttackRangeController:
 
         # Detect cloud provider from config
         self.cloud_provider_name = config.get("general", {}).get("cloud_provider", "aws").lower()
-        if self.cloud_provider_name not in ["aws", "azure", "gcp"]:
-            self.logger.error(f"Unsupported cloud provider: {self.cloud_provider_name}. Supported providers: aws, azure, gcp")
+        if self.cloud_provider_name not in ["aws", "azure", "gcp", "ludus"]:
+            self.logger.error(f"Unsupported cloud provider: {self.cloud_provider_name}. Supported providers: aws, azure, gcp, ludus")
             sys.exit(1)
 
         # Set up directory paths
@@ -65,6 +67,8 @@ class AttackRangeController:
             self.terraform_dir = os.path.join(os.path.dirname(__file__), "../terraform/azure")
         elif self.cloud_provider_name == "gcp":
             self.terraform_dir = os.path.join(os.path.dirname(__file__), "../terraform/gcp")
+        elif self.cloud_provider_name == "ludus":
+            self.terraform_dir = os.path.join(os.path.dirname(__file__), "../terraform/ludus")
         else:  # aws
             self.terraform_dir = os.path.join(os.path.dirname(__file__), "../terraform/aws")
 
@@ -89,6 +93,8 @@ class AttackRangeController:
             self.cloud_provider = AzureProvider(self.config, self.logger)
         elif self.cloud_provider_name == "gcp":
             self.cloud_provider = GCPProvider(self.config, self.logger)
+        elif self.cloud_provider_name == "ludus":
+            self.cloud_provider = LudusProvider(self.config, self.logger)
         else:  # aws
             self.cloud_provider = AWSProvider(self.config, self.logger)
 
@@ -197,6 +203,29 @@ class AttackRangeController:
                     f"Could not read existing config file {config_file_path}: {e}. "
                     "Proceeding with build."
                 )
+
+        # Ludus uses its own build path (no Terraform)
+        if self.cloud_provider_name == "ludus":
+            router_public_ip, wireguard_config = self._build_ludus(attack_range_id)
+
+            if two_phase:
+                self.logger.info("\n" + "="*80)
+                self.logger.info("Ludus deployment completed.")
+                self.logger.info("="*80)
+                self.logger.info(f"Attack Range ID: {attack_range_id}")
+                self.logger.info(f"Ludus URL: {router_public_ip}")
+                self.logger.info("="*80 + "\n")
+                return router_public_ip, wireguard_config
+
+            config_file_path = os.path.join(self.attack_range_dir, f"{attack_range_id}.yml")
+            self.logger.info("\n" + "="*80)
+            self.logger.info("Attack range built successfully via Ludus!")
+            self.logger.info("="*80)
+            self.logger.info(f"Attack Range ID: {attack_range_id}")
+            self.logger.info(f"Ludus URL: {router_public_ip}")
+            self.logger.info(f"Configuration saved to: {config_file_path}")
+            self.logger.info("="*80 + "\n")
+            return
 
         # Build VPN phase
         router_public_ip, wireguard_config = self.build_vpn_phase(attack_range_id)
@@ -364,11 +393,164 @@ class AttackRangeController:
         # Update status to running
         self.config_manager.update_status("running", router_public_ip=router_public_ip)
 
+    def _build_ludus(self, attack_range_id: str, abort_check: Optional[Callable[[], bool]] = None) -> tuple:
+        """
+        Build attack range using Ludus (bypasses Terraform entirely).
+
+        Ludus handles VM provisioning, networking, WireGuard VPN, and
+        Ansible role deployment through its own API/CLI.
+
+        :param attack_range_id: Attack range ID
+        :param abort_check: Optional abort callable
+        :return: Tuple of (ludus_url, wireguard_config)
+        """
+        if abort_check and abort_check():
+            raise RuntimeError("Build aborted")
+
+        self.config_manager.update_status("build_vpn")
+
+        # Save config to config folder
+        self.config_manager.save_config_to_attack_range(attack_range_id)
+        if abort_check and abort_check():
+            raise RuntimeError("Build aborted")
+
+        # Convert attack_range config to Ludus range config format
+        self.logger.info("Converting attack_range config to Ludus range config...")
+        ludus_config = self.cloud_provider.convert_to_ludus_config(self.config)
+        if abort_check and abort_check():
+            raise RuntimeError("Build aborted")
+
+        # Install required Ansible roles on Ludus server
+        attack_range_servers = self.config.get("attack_range", [])
+        roles_to_install = set()
+        for server in attack_range_servers:
+            for role_entry in server.get("roles", []):
+                if isinstance(role_entry, dict):
+                    role_name = role_entry.get("role", "")
+                    if role_name:
+                        roles_to_install.add(role_name.lower())
+                elif isinstance(role_entry, str):
+                    roles_to_install.add(role_entry.lower())
+        if roles_to_install:
+            self.logger.info(f"Installing {len(roles_to_install)} Ansible role(s) on Ludus server...")
+            self.cloud_provider.install_ansible_roles(list(roles_to_install))
+        if abort_check and abort_check():
+            raise RuntimeError("Build aborted")
+
+        # Set range config in Ludus
+        self.logger.info("Setting Ludus range configuration...")
+        self.cloud_provider.set_range_config(ludus_config)
+        if abort_check and abort_check():
+            raise RuntimeError("Build aborted")
+
+        # Deploy the range
+        self.logger.info("Deploying Ludus range...")
+        self.config_manager.update_status("build_lab")
+        self.cloud_provider.deploy_range()
+        if abort_check and abort_check():
+            raise RuntimeError("Build aborted")
+
+        # Wait for deployment to complete
+        self.cloud_provider.wait_for_deployment()
+        if abort_check and abort_check():
+            raise RuntimeError("Build aborted")
+
+        # Get WireGuard config from Ludus
+        self.logger.info("Retrieving WireGuard configuration from Ludus...")
+        wireguard_config = self.cloud_provider.get_wireguard_config()
+        ludus_url = self.cloud_provider.get_ludus_url()
+
+        # Store wireguard_config in the config file
+        if wireguard_config:
+            self.config_manager.update_wireguard_config(wireguard_config)
+
+        # Update status to running
+        self.config_manager.update_status("running", router_public_ip=ludus_url)
+
+        return ludus_url, wireguard_config
+
+    def import_ludus_range(self) -> dict:
+        """
+        Import an already-deployed Ludus range into attack_range management.
+
+        Queries the Ludus server for the current range config, status, and
+        WireGuard configuration, then constructs and saves an attack_range
+        config file so the range appears in the dashboard and can be
+        destroyed / used for simulations.
+
+        :returns: Dict with ``attack_range_id``, ``status``, ``ludus_url``,
+                  and ``wireguard_config``.
+        :raises RuntimeError: If the Ludus range is not in a usable state.
+        """
+        self.logger.info("[action] > import ludus range\n")
+
+        if self.cloud_provider_name != "ludus":
+            raise RuntimeError("import_ludus_range is only supported for the Ludus provider")
+
+        # 1. Verify the range is deployed
+        status = self.cloud_provider.get_range_status()
+        if status != "SUCCESS":
+            raise RuntimeError(
+                f"Cannot import Ludus range: current status is '{status}'. "
+                "The range must be in SUCCESS state (fully deployed)."
+            )
+        self.logger.info(f"Ludus range status: {status}")
+
+        # 2. Get the live range config from Ludus
+        ludus_range_config = self.cloud_provider.get_range_config()
+
+        # 3. If we don't already have attack_range servers from the template,
+        #    reverse-map from the Ludus config
+        if not self.config.get("attack_range") and ludus_range_config:
+            self.logger.info("Reverse-mapping Ludus range config to attack_range format...")
+            self.config["attack_range"] = self.cloud_provider.convert_ludus_config_to_attack_range(
+                ludus_range_config
+            )
+
+        # 4. Ensure we have an attack_range_id
+        attack_range_id = self.config.get("general", {}).get("attack_range_id")
+        if not attack_range_id:
+            attack_range_id = str(uuid.uuid4())
+            if "general" not in self.config:
+                self.config["general"] = {}
+            self.config["general"]["attack_range_id"] = attack_range_id
+        self.logger.info(f"Attack range ID: {attack_range_id}")
+
+        # 5. Get WireGuard config
+        wireguard_config = self.cloud_provider.get_wireguard_config()
+        ludus_url = self.cloud_provider.get_ludus_url()
+
+        # 6. Save the config as "running"
+        self.config["general"]["status"] = "running"
+        self.config["general"]["cloud_provider"] = "ludus"
+        if ludus_url:
+            self.config["general"]["router_public_ip"] = ludus_url
+        if wireguard_config:
+            self.config["general"]["wireguard_config"] = wireguard_config
+
+        self.config_manager.save_config_to_attack_range(attack_range_id)
+        self.logger.info(f"Ludus range imported as attack_range_id={attack_range_id}")
+
+        return {
+            "attack_range_id": attack_range_id,
+            "status": "running",
+            "ludus_url": ludus_url,
+            "wireguard_config": wireguard_config,
+        }
+
     def destroy(self) -> None:
         """
-        Destroy the attack range infrastructure using terraform destroy.
+        Destroy the attack range infrastructure using terraform destroy (or Ludus CLI).
         """
         self.logger.info("[action] > destroy\n")
+
+        if self.cloud_provider_name == "ludus":
+            # Ludus: destroy the range via the Ludus CLI
+            self.cloud_provider.destroy_range()
+            self.logger.info("Ludus range destroyed successfully")
+            if self.config_path:
+                self.config_manager.remove_config()
+            return
 
         # Setup remote backend (S3/Azure Storage/GCS) if needed
         self.backend_manager.setup_remote_backend()

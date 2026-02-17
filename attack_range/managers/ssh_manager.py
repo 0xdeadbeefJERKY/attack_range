@@ -167,6 +167,11 @@ class SSHManager:
                 self.config["gcp"] = {}
             self.config["gcp"]["private_key_path"] = os.path.abspath(os.path.expanduser(private_key_path))
             self.config["gcp"]["public_key_path"] = os.path.abspath(os.path.expanduser(public_key_path))
+        elif cloud_provider_name == "ludus":
+            if "ludus" not in self.config:
+                self.config["ludus"] = {}
+            self.config["ludus"]["private_key_path"] = os.path.abspath(os.path.expanduser(private_key_path))
+            self.config["ludus"]["public_key_path"] = os.path.abspath(os.path.expanduser(public_key_path))
         else:  # aws
             if "aws" not in self.config:
                 self.config["aws"] = {}

@@ -72,7 +72,7 @@ try {
 </BaseLayout>
 
 <script>
-	const API_BASE_URL = import.meta.env.PUBLIC_API_URL || 'http://localhost:4000';
+	const API_BASE_URL = import.meta.env.PUBLIC_API_URL || `${window.location.protocol}//${window.location.hostname}:4000`;
 	
 	document.addEventListener('DOMContentLoaded', () => {
 		const tableRows = document.querySelectorAll('.table-row');

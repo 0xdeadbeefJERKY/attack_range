@@ -1,5 +1,5 @@
 FROM ubuntu:22.04
-ENV DEBIAN_FRONTEND=noninteractive 
+ENV DEBIAN_FRONTEND=noninteractive
 
 ARG TERRAFORM_VERSION=1.14.4
 RUN apt-get update && \
@@ -27,7 +27,7 @@ RUN ARCH=$(uname -m) && \
     unzip terraform.zip && \
     mv terraform /usr/local/bin/ && \
     rm -rf terraform.zip
- 
+
 # Install AWS CLI (detect architecture and install appropriate version)
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then \
@@ -48,6 +48,21 @@ RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.
     apt-get update && \
     apt-get install -y google-cloud-cli && \
     rm -rf /var/lib/apt/lists/*
+
+# Install Ludus CLI from GitLab package registry
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then \
+        LUDUS_ARCH="arm64"; \
+    else \
+        LUDUS_ARCH="amd64"; \
+    fi && \
+    LUDUS_PROJECT_ID=54052321 && \
+    LUDUS_TAG=$(curl -sL "https://gitlab.com/api/v4/projects/${LUDUS_PROJECT_ID}/repository/tags" | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['name'])" 2>/dev/null) && \
+    if [ -n "$LUDUS_TAG" ]; then \
+        curl -sL -o /usr/local/bin/ludus \
+            "https://gitlab.com/api/v4/projects/${LUDUS_PROJECT_ID}/packages/generic/ludus/${LUDUS_TAG}/ludus-client_linux-${LUDUS_ARCH}-${LUDUS_TAG}" && \
+        chmod +x /usr/local/bin/ludus; \
+    fi
 
 RUN echo 'alias python=python3.12' >> ~/.bashrc
 

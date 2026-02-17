@@ -25,6 +25,8 @@ services:
       - FLASK_ENV=production
       - FLASK_DEBUG=0
       - OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+      # Ludus API key (set LUDUS_API_KEY in your shell environment)
+      - LUDUS_API_KEY=${LUDUS_API_KEY:-}
     restart: unless-stopped
     networks:
       - attack-range-network

@@ -44,14 +44,21 @@ class TerraformManager:
                 "gcp": config.get("gcp", {}),
                 "attack_range": config.get("attack_range", []),
             }
+        elif cloud_provider == "ludus":
+            # Ludus does not use Terraform -- variables kept for interface consistency
+            terraform_vars = {
+                "general": config.get("general", {}),
+                "ludus": config.get("ludus", {}),
+                "attack_range": config.get("attack_range", []),
+            }
         else:  # aws
             terraform_vars = {
                 "general": config.get("general", {}),
                 "aws": config.get("aws", {}),
                 "attack_range": config.get("attack_range", []),
             }
-        
-        # Initialize terraform
+
+        # Initialize terraform (Ludus does not actively use Terraform)
         self.terraform = Terraform(
             working_dir=terraform_dir,
             variables=terraform_vars,
@@ -77,13 +84,19 @@ class TerraformManager:
                 "gcp": self.config.get("gcp", {}),
                 "attack_range": self.config.get("attack_range", []),
             }
+        elif cloud_provider == "ludus":
+            terraform_vars = {
+                "general": self.config.get("general", {}),
+                "ludus": self.config.get("ludus", {}),
+                "attack_range": self.config.get("attack_range", []),
+            }
         else:  # aws
             terraform_vars = {
                 "general": self.config.get("general", {}),
                 "aws": self.config.get("aws", {}),
                 "attack_range": self.config.get("attack_range", []),
             }
-        
+
         self.terraform.variables = terraform_vars
 
     def init(self, backend_was_created: bool = False) -> None:

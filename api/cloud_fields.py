@@ -136,6 +136,18 @@ def _gcp_schema() -> Dict[str, Any]:
     }
 
 
+def _ludus_schema() -> Dict[str, Any]:
+    return {
+        "ludus_url": {
+            "label": "Ludus API URL",
+            "type": "text",
+            "required": False,
+            "placeholder": "https://198.51.100.1:8080",
+            "help_text": "Ludus server API URL (defaults to https://198.51.100.1:8080)",
+        },
+    }
+
+
 def get_cloud_fields_schema(provider: str) -> Dict[str, Any]:
     """Return the cloud-specific fields schema for a provider (for dropdowns and labels)."""
     provider = (provider or "").lower()
@@ -145,6 +157,8 @@ def get_cloud_fields_schema(provider: str) -> Dict[str, Any]:
         return _azure_schema()
     if provider == "gcp":
         return _gcp_schema()
+    if provider == "ludus":
+        return _ludus_schema()
     return {}
 
 

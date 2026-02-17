@@ -1,0 +1,52 @@
+general:
+  attack_range_password: changeme123!
+  cloud_provider: ludus
+  attack_range_name: ar
+  ip_whitelist: 0.0.0.0/0
+  description: Ludus deployment with Splunk, Windows Active Directory domain controller, and domain-joined Windows endpoint
+ludus:
+  ludus_url: https://198.51.100.1:8080
+  vlan: 20
+attack_range:
+- name: splunk
+  template: debian-12-x64-server-template
+  ram_gb: 16
+  cpus: 8
+  ip_last_octet: 10
+  linux: true
+  user_name: debian
+  roles:
+  - role: p4t12ick.ludus_ar_splunk
+    vars:
+      ludus_ar_splunk_password: changeme123!
+- name: win-dc
+  template: win2022-server-x64-template
+  ram_gb: 8
+  cpus: 4
+  ip_last_octet: 11
+  windows: true
+  user_name: localuser
+  roles:
+  - role: p4t12ick.ludus_ar_windows
+    vars:
+      ludus_ar_windows_password: changeme123!
+      ludus_ar_windows_splunk_ip: 10.0.2.10
+  - role: p4t12ick.ar_domain_controller
+    vars:
+      ar_domain_controller_password: changeme123!
+- name: win
+  template: win2022-server-x64-template
+  ram_gb: 8
+  cpus: 4
+  ip_last_octet: 12
+  windows: true
+  user_name: localuser
+  roles:
+  - role: p4t12ick.ludus_ar_windows
+    vars:
+      ludus_ar_windows_password: changeme123!
+      ludus_ar_windows_splunk_ip: 10.0.2.10
+  - role: p4t12ick.ar_domain_join
+    vars:
+      ar_domain_join_password: changeme123!
+      ar_domain_join_domain_controller_ip: 10.0.2.11

@@ -49,6 +49,11 @@ class BackendManager:
 
         backend_was_created = False
 
+        if self.cloud_provider_name == "ludus":
+            # Ludus does not use a remote Terraform backend
+            self.logger.info("Ludus: no remote backend required -- skipping")
+            return False
+
         if self.cloud_provider_name == "gcp":
             backend_name = f"terraform-state-{attack_range_id}"
             bucket_name = self.cloud_provider.sanitize_name(backend_name)
@@ -132,6 +137,10 @@ class BackendManager:
         attack_range_id = self.config.get("general", {}).get("attack_range_id")
         if not attack_range_id:
             self.logger.warning("attack_range_id not found in config. Cannot cleanup remote backend.")
+            return
+
+        if self.cloud_provider_name == "ludus":
+            self.logger.info("Ludus: no remote backend to clean up")
             return
 
         if self.cloud_provider_name == "gcp":

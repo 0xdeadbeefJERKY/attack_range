@@ -38,7 +38,7 @@ def resolve_template_path(template: str, templates_dir: str) -> str:
     else:
         # Simple name - look in templates folder (check all provider subdirs)
         # First try to find it in any provider directory
-        for provider in ["aws", "azure", "gcp"]:
+        for provider in ["aws", "azure", "gcp", "ludus"]:
             candidate = os.path.join(templates_dir, provider, template)
             if not candidate.endswith('.yml') and not candidate.endswith('.yaml'):
                 candidate += '.yml'
