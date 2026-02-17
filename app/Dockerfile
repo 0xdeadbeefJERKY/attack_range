@@ -7,7 +7,10 @@ WORKDIR /app
 COPY app/package*.json ./
 
 # Install dependencies (node_modules from host are excluded via .dockerignore)
-RUN npm ci --unsafe-perm
+# Use --ignore-scripts to avoid permission issues with postinstall hooks (esbuild),
+# then run node to trigger esbuild's own platform-specific binary resolution.
+RUN npm ci --ignore-scripts && \
+    node node_modules/esbuild/install.js
 
 # Copy app source (excludes node_modules, dist, .astro via .dockerignore)
 COPY app/ ./
